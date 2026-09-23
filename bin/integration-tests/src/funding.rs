@@ -32,15 +32,22 @@ pub const FUNDING_SERVICE_ENV: &str = "MIDEN_FUNDING_SERVICE_URL";
 /// tens of thousands of base units, so this covers far more than any one test spends.
 const FUNDING_AMOUNT: u64 = 10_000_000;
 
-/// How long one request may take. The service answers as soon as the node holds the transaction,
-/// but it builds one transaction at a time and waits for each to commit before it builds the next,
-/// so a request can still wait out a proof and a preceding batch's block. Set above the
-/// `--http.timeout` the test node gives the service.
+/// How long one `fund` call may take, with every attempt included. The service answers as soon as
+/// the node holds the transaction, but it builds one transaction at a time and waits for each to
+/// commit before it builds the next, so a request can still wait out a proof and a preceding
+/// batch's block.
 ///
-/// This is a correctness bound, not only a courtesy. A caller that gives up is dropped from the
-/// service's next batch without an error on either side, so the account would silently never be
-/// funded.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(360);
+/// Keep this below the time after which nextest kills a test (`slow-timeout` in
+/// `.config/nextest.toml`, 360s). A killed test reports only that it timed out. A test which
+/// reaches this deadline fails with the funding error instead, which shows that the funding service
+/// stopped answering.
+const FUNDING_DEADLINE: Duration = Duration::from_secs(240);
+
+/// How long one attempt may take. An attempt cannot outlive the whole `fund` call.
+///
+/// A caller that gives up is dropped from the service's next batch without an error from the
+/// service, so the account is not funded. `fund` then returns the timeout as its error.
+const REQUEST_TIMEOUT: Duration = FUNDING_DEADLINE;
 
 /// How many times one funding request is sent before the run gives up.
 ///
@@ -255,7 +262,15 @@ impl FeeFunder for FundingServiceFunder {
         // transaction per account and wait for each to commit in turn.
         let requests = account_ids.iter().map(|target| self.request_note(*target));
 
-        futures::future::try_join_all(requests).await
+        tokio::time::timeout(FUNDING_DEADLINE, futures::future::try_join_all(requests))
+            .await
+            .map_err(|_| {
+                anyhow!(
+                    "the funding service did not fund {} account(s) within {}s",
+                    account_ids.len(),
+                    FUNDING_DEADLINE.as_secs()
+                )
+            })?
     }
 
     // The run does not wait for the funding transactions to commit. Each funding note is consumed

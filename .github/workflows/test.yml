@@ -27,7 +27,7 @@ env:
   # which is what the integration tests ask it for. Remove this once a node release carries it.
   # Every job which touches the test node needs it: the one which builds the binaries, and the ones
   # which start them, because the started binaries are checked against the source resolved here.
-  MIDEN_NODE_GIT_REV: ee245792c4ed98f1852529b24788a96d73a48f0a
+  MIDEN_NODE_GIT_REV: 4b1e2328f240467a8713f0ab5f279c71739440c2
 
 jobs:
   test:
