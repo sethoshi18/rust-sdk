@@ -127,10 +127,12 @@ Three properties of the service a test can notice:
 
 - The test process proves nothing itself, and every request that reaches the service inside one
   short window shares a single transaction, across processes.
-- The suite asks the service not to wait for the note to commit, so a request is answered as soon
-  as the node holds the transaction which creates the note. Every funding note is consumed as an
-  unauthenticated input, so a test never needs the block. A funding transaction which expires
-  before it commits therefore fails the transaction which consumes its note, and the test with it.
+- The service answers a request with the note as soon as it queues it, before it builds the
+  transaction which creates the note. Every funding note is consumed as an unauthenticated input,
+  so a test never needs the block. A test can submit its transaction before the funding
+  transaction reaches the node. The node then rejects it, and the test client's RPC layer
+  resubmits the same proven transaction until the node accepts it. An expired funding transaction
+  keeps its notes queued in the service, which puts them into a later transaction.
 - Its notes are **public**. A sync therefore imports a funding note as a tracked input note of the
   account it targets, so a test must identify a note by ID rather than by position or by counting
   the committed notes.

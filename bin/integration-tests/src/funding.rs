@@ -5,9 +5,11 @@
 //! caller therefore asks for all of its accounts at once, so that they share that transaction, and
 //! so do the accounts of every other test process funding at the same moment.
 //!
-//! The requests do not wait for the note to commit. Every funding note is consumed as an
-//! unauthenticated input, so the transaction holding it only has to have reached the node, and
-//! waiting for a block would put a block interval on the critical path of each funded test.
+//! The service answers with the note before it builds the transaction which creates the note. Every
+//! funding note is consumed as an unauthenticated input, so no test waits for the funding
+//! transaction to commit. A test can submit its own transaction before the funding transaction
+//! reaches the node. The test client's RPC layer resubmits such a rejected transaction (see
+//! `miden_client::testing::submit_retry`).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -33,9 +35,7 @@ pub const FUNDING_SERVICE_ENV: &str = "MIDEN_FUNDING_SERVICE_URL";
 const FUNDING_AMOUNT: u64 = 10_000_000;
 
 /// How long one `fund` call may take, with every attempt included. The service answers as soon as
-/// the node holds the transaction, but it builds one transaction at a time and waits for each to
-/// commit before it builds the next, so a request can still wait out a proof and a preceding
-/// batch's block.
+/// it queues the note, so this bound is reached only when the service stops answering.
 ///
 /// Keep this below the time after which nextest kills a test (`slow-timeout` in
 /// `.config/nextest.toml`, 360s). A killed test reports only that it timed out. A test which
@@ -75,16 +75,9 @@ struct RequestFundsRequest {
     account_id: String,
     /// The amount of the native asset, in base units.
     amount: u64,
-    /// Whether the service answers only once the note is in a block.
-    ///
-    /// Always false here. The note is consumed as an unauthenticated input, so the answer is useful
-    /// as soon as the node holds the transaction which creates it.
-    wait_for_commit: bool,
 }
 
-/// The body of a successful funding response. The transaction id the service also returns is not
-/// read, and it returns no inclusion proof for a request which does not wait, because the proof
-/// exists only once the note has committed. The note alone is what the funded account consumes.
+/// The body of a successful funding response. The note is what the funded account consumes.
 #[derive(Debug, Deserialize)]
 struct RequestFundsResponse {
     /// The serialized note, in hexadecimal.
@@ -173,7 +166,6 @@ impl FundingServiceFunder {
         let body = RequestFundsRequest {
             account_id: target.to_hex(),
             amount: self.amount,
-            wait_for_commit: false,
         };
 
         let mut attempt = 1;
@@ -257,9 +249,8 @@ impl FeeFunder for FundingServiceFunder {
             return Ok(Vec::new());
         }
 
-        // Sent together rather than one after another. The service gathers what reaches it inside
-        // one short window into a single transaction, so a sequential caller would pay for one
-        // transaction per account and wait for each to commit in turn.
+        // Sent together rather than one after another, so the notes are queued together and the
+        // service can put them into one transaction.
         let requests = account_ids.iter().map(|target| self.request_note(*target));
 
         tokio::time::timeout(FUNDING_DEADLINE, futures::future::try_join_all(requests))
@@ -272,10 +263,6 @@ impl FeeFunder for FundingServiceFunder {
                 )
             })?
     }
-
-    // The run does not wait for the funding transactions to commit. Each funding note is consumed
-    // as an unauthenticated input by the transaction it pays for, which the node orders behind the
-    // one which creates it.
 }
 
 /// Returns the faucet the chain charges fees in, as the genesis header's protocol configuration

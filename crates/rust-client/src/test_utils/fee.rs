@@ -122,9 +122,10 @@ impl TestClient {
         for (account_id, note) in funded {
             let (account_id, note_id) = (*account_id, note.id());
 
-            // Consumed as an unauthenticated input, so the funder's transaction only has to have
-            // reached the mempool. This doubles as the deploy, paying its fee out of the note it
-            // just consumed.
+            // Consumed as an unauthenticated input, so the funder's transaction does not have to be
+            // committed. It has to reach the node before this one does, or the node rejects this
+            // one (see `submit_retry`). This doubles as the deploy, paying its fee out of the note
+            // it just consumed.
             let request = TransactionRequestBuilder::new()
                 .build_consume_notes(vec![note.clone()])
                 .context("failed to build the funding note consumption request")?;

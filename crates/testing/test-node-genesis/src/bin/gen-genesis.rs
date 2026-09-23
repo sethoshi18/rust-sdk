@@ -4,8 +4,8 @@
 //! Usage: `gen-genesis [OUTPUT_DIR]` (defaults to `./genesis`).
 //!
 //! The chain charges fees in the `MIDEN` native faucet's asset: every transaction pays out of its
-//! own account vault. The funding account holds the asset the node's funding service hands out.
-//! The fee itself is not a fixture: `start-test-node.sh` passes it to `miden-validator genesis`.
+//! own account vault. The funding account holds the asset the node's funding service hands out. The
+//! fee itself is not a fixture: `start-test-node.sh` passes it to `miden-validator genesis`.
 
 use std::path::PathBuf;
 

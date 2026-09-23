@@ -16,6 +16,7 @@ use miden_client::note_transport::{
 use miden_client::rpc::{Endpoint, GrpcClient, VerifyingRpcClient};
 use miden_client::testing::common::{FilesystemKeyStore, TestClient, create_test_store_path};
 use miden_client::testing::fee::FeeFunder;
+use miden_client::testing::submit_retry::UnknownNoteRetryRpcClient;
 use miden_client::{Felt, RemoteTransactionProver};
 use miden_client_sqlite_store::ClientBuilderSqliteExt;
 use rand::RngExt;
@@ -145,9 +146,11 @@ impl ClientConfig {
             format!("failed to create keystore at path: {}", auth_path.to_string_lossy())
         })?;
 
-        let rpc_client = Arc::new(VerifyingRpcClient::new(GrpcClient::new(
-            &self.rpc_endpoint,
-            self.rpc_timeout_ms,
+        // The funding service answers before its funding transaction reaches the node, so a test
+        // can submit a transaction which consumes a funding note the node does not know yet. Such a
+        // rejected submission is retried.
+        let rpc_client = Arc::new(UnknownNoteRetryRpcClient::new(VerifyingRpcClient::new(
+            GrpcClient::new(&self.rpc_endpoint, self.rpc_timeout_ms),
         )));
 
         let mut builder = ClientBuilder::new()
