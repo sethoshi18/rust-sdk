@@ -32,7 +32,7 @@ pub const FUNDING_SERVICE_ENV: &str = "MIDEN_FUNDING_SERVICE_URL";
 
 /// Amount of the native fee asset, in base units, each funded account receives. A fee runs a few
 /// tens of thousands of base units, so this covers far more than any one test spends.
-const FUNDING_AMOUNT: u64 = 10_000_000;
+pub const FUNDING_AMOUNT: u64 = 10_000_000;
 
 /// How long one `fund` call may take, with every attempt included. The service answers as soon as
 /// it queues the note, so this bound is reached only when the service stops answering.

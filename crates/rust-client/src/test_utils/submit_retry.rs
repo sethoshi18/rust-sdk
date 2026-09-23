@@ -225,6 +225,18 @@ impl<T: NodeRpcClient> NodeRpcClient for UnknownNoteRetryRpcClient<T> {
         self.inner.get_account(account_id, request).await
     }
 
+    async fn register_account(
+        &self,
+        invitation_code: &str,
+        account_id: AccountId,
+    ) -> Result<(), RpcError> {
+        self.inner.register_account(invitation_code, account_id).await
+    }
+
+    async fn is_account_allowed(&self, account_id: AccountId) -> Result<bool, RpcError> {
+        self.inner.is_account_allowed(account_id).await
+    }
+
     async fn get_note_script_by_root(&self, root: Word) -> Result<Option<NoteScript>, RpcError> {
         self.inner.get_note_script_by_root(root).await
     }

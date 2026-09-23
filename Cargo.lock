@@ -2019,9 +2019,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-rustls"
-version = "0.27.9"
+version = "0.27.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33ca68d021ef39cf6463ab54c1d0f5daf03377b70561305bb89a8f83aab66e0f"
+checksum = "dfa8e654703247911e29c23fbeaa261834bd9bb74efba2f9acddc37bfb127f53"
 dependencies = [
  "http",
  "hyper",
@@ -2647,9 +2647,9 @@ dependencies = [
 
 [[package]]
 name = "lru-slab"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
+checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
 
 [[package]]
 name = "macro-string"
@@ -2796,7 +2796,7 @@ dependencies = [
 
 [[package]]
 name = "miden-client"
-version = "0.17.0-rc.1"
+version = "0.17.0-rc.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2836,7 +2836,7 @@ dependencies = [
 
 [[package]]
 name = "miden-client-bench"
-version = "0.17.0-rc.1"
+version = "0.17.0-rc.2"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2853,7 +2853,7 @@ dependencies = [
 
 [[package]]
 name = "miden-client-cli"
-version = "0.17.0-rc.1"
+version = "0.17.0-rc.2"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2882,7 +2882,7 @@ dependencies = [
 
 [[package]]
 name = "miden-client-integration-tests"
-version = "0.17.0-rc.1"
+version = "0.17.0-rc.2"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -2897,6 +2897,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tokio",
  "tracing",
  "uuid",
@@ -2904,7 +2905,7 @@ dependencies = [
 
 [[package]]
 name = "miden-client-sqlite-store"
-version = "0.17.0-rc.1"
+version = "0.17.0-rc.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2923,7 +2924,7 @@ dependencies = [
 
 [[package]]
 name = "miden-client-unit-tests"
-version = "0.17.0-rc.1"
+version = "0.17.0-rc.2"
 dependencies = [
  "anyhow",
  "miden-client",
@@ -4607,9 +4608,9 @@ dependencies = [
 
 [[package]]
 name = "quinn"
-version = "0.11.11"
+version = "0.11.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c1a41e437b6bbd489372cd4971de128e85c855f56c57f283d20ff016cf7c0a8"
+checksum = "4051e23e9185c255a7e33ef59cdbca87a22d359052eecd22fc6b901fb37d9d11"
 dependencies = [
  "bytes",
  "cfg_aliases",
@@ -4627,9 +4628,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.17"
+version = "0.11.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04759210543be93709136e28212294a659ef5001836ff4eab4d663e4529bba83"
+checksum = "a9746dbde176634f4f2f1faf2404e30a31b2bc1e9cafb5329c95d8177a18c9fc"
 dependencies = [
  "bytes",
  "getrandom 0.4.3",
@@ -4658,7 +4659,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5760,7 +5761,7 @@ checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
 
 [[package]]
 name = "test-node-genesis"
-version = "0.17.0-rc.1"
+version = "0.17.0-rc.2"
 dependencies = [
  "anyhow",
  "miden-agglayer",
@@ -6883,7 +6884,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.17.0-rc.1"
+version = "0.17.0-rc.2"
 dependencies = [
  "anyhow",
  "clap",

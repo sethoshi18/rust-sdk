@@ -30,6 +30,7 @@ rand           = { workspace = true }
 reqwest        = { workspace = true }
 serde          = { workspace = true }
 serde_json     = { features = ["arbitrary_precision"], workspace = true }
+sha2           = { workspace = true }
 tokio          = { workspace = true }
 tracing        = { workspace = true }
 uuid           = { features = ["v4"], workspace = true }

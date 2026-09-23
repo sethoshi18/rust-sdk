@@ -19,6 +19,10 @@
 #                                the cached binaries are current.
 #   MIDEN_NODE_GIT_URL           repository MIDEN_NODE_GIT_REV names
 #                                (default https://github.com/0xMiden/miden-node)
+#   MIDEN_ACCOUNT_ALLOWLIST      1 enforces the account allowlist and binds the administration
+#                                API the tests create invitation codes through. The sequencer
+#                                then asks the funding service to pay each account which
+#                                registers. 0 (default) allows unrestricted account creation
 #
 # A fee-charging chain also starts the funding service, which is where the tests draw the native
 # asset from. They reach it at MIDEN_FUNDING_SERVICE_URL=http://127.0.0.1:50401.
@@ -46,11 +50,20 @@ PID_FILE="$CACHE/pids"
 RPC="127.0.0.1:57291"   # matches the client default (`MIDEN_NODE_PORT`)
 VALIDATOR="127.0.0.1:50101"
 NTX="127.0.0.1:50301"
+# Private administration API of the sequencer, bound only when allowlist enforcement is on. It is
+# the only way to add an invitation code to the account allowlist, because no genesis option and
+# no bootstrap subcommand writes one. The allowlist tests create their codes through it.
+ADMIN="127.0.0.1:50100"
 PROVER_PORT=50051
 PROVER="127.0.0.1:$PROVER_PORT"
-# The funding service's HTTP API, which the tests reach through MIDEN_FUNDING_SERVICE_URL. Matches
-# the port the node's own compose file uses.
+# HTTP API of the funding service, started on a fee-charging chain. The tests reach it through
+# MIDEN_FUNDING_SERVICE_URL, and with allowlist enforcement on the sequencer calls it for every
+# account that registers. Matches the port of the node's own compose file.
 FUNDING="127.0.0.1:50401"
+# Native asset base units the sequencer asks the funding service to pay each registered account.
+# Matches `FUNDING_AMOUNT` in `bin/integration-tests/src/funding.rs`, which covers the fees of every
+# transaction a test runs against the account.
+FUNDING_AMOUNT=10000000
 # How long a single network transaction proof may take. The prover enforces it server-side and the
 # ntx-builder waits that long for the response. Shared so the two cannot drift apart: if the
 # ntx-builder waited less, it would abandon a request the prover is still working on, re-queue the
@@ -66,9 +79,12 @@ VERIFICATION_BASE_FEE="${MIDEN_VERIFICATION_BASE_FEE:-500}"
 # but never reads the account, so this is the same placeholder id the node repo uses for local
 # runs. No test consumes the fee notes.
 BATCH_BUILDER_WALLET="${MIDEN_BATCH_BUILDER_WALLET:-0xcc0000000000dd010000ee000000ff}"
+# Account allowlist enforcement. The node enforces it by default, which rejects every account
+# creation the integration tests do, so the default here is off and callers opt in.
+ACCOUNT_ALLOWLIST="${MIDEN_ACCOUNT_ALLOWLIST:-0}"
 
-NODE_BINS=(miden-validator miden-node miden-ntx-builder miden-remote-prover miden-note-transport
-           miden-funding-service)
+NODE_BINS=(miden-validator miden-node miden-ntx-builder miden-remote-prover miden-funding-service
+    miden-note-transport)
 
 # Resolve the node source. MIDEN_NODE_GIT_REV wins, so a node that is not released yet can be
 # tested without a git pin in Cargo.lock, which would drag the whole lockfile with it. Otherwise
@@ -101,11 +117,9 @@ else
     NODE_DESC="crates.io @ $NODE_VERSION"
 fi
 
-# What CI keys its cache of the installed binaries on. It covers the set of binaries as well as the
-# source, because adding a binary to NODE_BINS leaves an existing cache entry a valid hit for a
-# source that has not moved, and that entry is missing the new binary. Every job which restores it
-# would then build that binary itself, and the entry is never refreshed because CI only saves on a
-# miss.
+# CI keys its cache of the installed binaries on this. It covers the set of binaries as well as the
+# source. A binary added to NODE_BINS with an unchanged source otherwise hits a cache entry that
+# does not contain it, and CI never refreshes that entry because it saves only on a miss.
 NODE_CACHE_KEY="$NODE_REV-bins.$(printf '%s\n' "${NODE_BINS[@]}" | cksum | cut -d' ' -f1)"
 
 if [ "$MODE" = "print-rev" ]; then
@@ -156,6 +170,14 @@ fi
 if (exec 3<>"/dev/tcp/${RPC%:*}/${RPC##*:}") 2>/dev/null; then
     exec 3>&- 3<&-
     echo "error: something is already listening on $RPC; run stop-test-node.sh first" >&2
+    exit 1
+fi
+
+# The allowlist tests deploy each registered account with the note the funding service paid it. A
+# fee-free genesis declares no wallet for the service to pay from, so the two cannot be combined.
+if [ "$ACCOUNT_ALLOWLIST" = "1" ] && [ "$VERIFICATION_BASE_FEE" = "0" ]; then
+    echo "error: MIDEN_ACCOUNT_ALLOWLIST=1 needs a fee-charging chain for the funding service." \
+        "Unset MIDEN_VERIFICATION_BASE_FEE or set it above 0" >&2
     exit 1
 fi
 
@@ -238,7 +260,6 @@ start validator   "$BIN/miden-validator" start --listen "$VALIDATOR" --data-dire
     --storage-key.setup-context "$STORAGE_KEY_DIR/setup-context.wire" \
     --storage-key.public-key-set "$STORAGE_KEY_DIR/public-key-set.wire" \
     --storage-key.secret-share "$STORAGE_KEY_DIR/secret-share.wire"
-
 # The fee collector deployment and the sequencer both need the validator.
 echo "==> waiting for validator on $VALIDATOR"
 VALIDATOR_READY=""
@@ -268,11 +289,29 @@ if ! {
     exit 1
 fi
 
+# The node enforces the account allowlist unless told otherwise. Only the allowlist tests enable
+# it. The admin API is necessary only when the tests create invitation codes.
+#
+# With enforcement on, the sequencer asks the funding service to pay every account that registers,
+# and answers the registration only once that note is committed. That takes longer than the 10s
+# default request timeout of the RPC server. The service starts after the sequencer, because it
+# reads its account from the RPC. The sequencer calls the service only when an account registers.
+if [ "$ACCOUNT_ALLOWLIST" = "1" ]; then
+    SEQUENCER_ALLOWLIST_ARGS=(
+        --admin.listen "$ADMIN"
+        --funding-service.url "http://$FUNDING"
+        --funding-service.amount "$FUNDING_AMOUNT"
+        --rpc.grpc.timeout 60s
+    )
+else
+    SEQUENCER_ALLOWLIST_ARGS=(--disable-account-allowlist)
+fi
+
 start sequencer   "$BIN/miden-node" sequencer --rpc.listen "$RPC" --data-directory "$DATA/node" \
     --validator.url "http://$VALIDATOR" --ntx-builder.url "http://$NTX" \
     --rpc.network-tx-auth-header-value "$NETWORK_TX_AUTH" \
     --batch.builder.wallet-account-id "$BATCH_BUILDER_WALLET" \
-    --disable-account-allowlist \
+    "${SEQUENCER_ALLOWLIST_ARGS[@]}" \
     --block.interval 3s --batch.interval 1s
 # A network transaction's proof runs well past the prover's 60s default on a shared CI runner, and
 # the default capacity of 1 rejects the ntx-builder's retry outright, so it never converges. The
@@ -288,9 +327,25 @@ start ntx-builder "$BIN/miden-ntx-builder" start --listen "$NTX" --rpc.url "http
     --tx-prover.timeout "$PROVER_TIMEOUT" \
     --max-cycles "$((1 << 18))" \
     --data-directory "$DATA/ntx-builder"
+# Waits for the sequencer administration API to accept connections. The allowlist tests create
+# their invitation codes through it, so `--background` must not return before it is up. The API is
+# served by its own task, which may bind slightly after the RPC does.
+wait_for_admin_api() {
+    for _ in $(seq 1 30); do
+        if (exec 3<>"/dev/tcp/${ADMIN%:*}/${ADMIN##*:}") 2>/dev/null; then
+            exec 3>&- 3<&-
+            return 0
+        fi
+        sleep 1
+    done
 
-# The funding service hands the native asset to the accounts the tests create. It runs only on a
-# fee-charging chain, since a fee-free one hands out nothing.
+    echo "error: admin API did not become ready on $ADMIN within 30s; see $LOG_DIR" >&2
+    return 1
+}
+
+# The funding service hands the native asset to the accounts the tests create, and to every account
+# that registers when allowlist enforcement is on. It runs only on a fee-charging chain, since a
+# fee-free one hands out nothing.
 #
 # It pays out of the funding account `gen-genesis` wrote and genesis loaded through
 # `--funding-account`, signing with the key in that file, and trusts the same validator signing key
@@ -305,7 +360,7 @@ if [ "$VERIFICATION_BASE_FEE" != "0" ]; then
         --tx-prover.timeout "$PROVER_TIMEOUT" \
         --account-file "$DATA/genesis-config/funding_account.mac" \
         --validator-signing-public-key "$VALIDATOR_PUBLIC_KEY" \
-        --http.timeout 300s \
+        --http.timeout "$PROVER_TIMEOUT" \
         --poll-interval 250ms
 fi
 
@@ -348,6 +403,12 @@ if [ -n "$FUNDING_ENABLED" ]; then
 fi
 
 echo "==> node is up (RPC on http://$RPC); logs in $LOG_DIR"
+
+if [ "$ACCOUNT_ALLOWLIST" = "1" ]; then
+    wait_for_admin_api
+    echo "==> account allowlist enforcement is ON (admin API on http://$ADMIN," \
+        "registrations funded by http://$FUNDING)"
+fi
 
 if [ "$MODE" = "background" ]; then
     exit 0

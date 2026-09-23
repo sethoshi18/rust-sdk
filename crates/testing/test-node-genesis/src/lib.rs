@@ -58,8 +58,8 @@ pub const NATIVE_FAUCET_FILE: &str = "native_faucet.mac";
 pub const FAUCET_OPERATOR_FILE: &str = "faucet_operator.mac";
 
 /// File name of the public funding account, written with its secret key. `miden-validator genesis`
-/// requires one, and the node's funding service pays out of it. `start-test-node.sh` starts the
-/// service with this file.
+/// requires one. It is the account the node's funding service pays out of, and `start-test-node.sh`
+/// starts the service with this file.
 pub const FUNDING_ACCOUNT_FILE: &str = "funding_account.mac";
 
 /// Balance, in base units of the native fee asset, the funding account holds at genesis.
@@ -117,10 +117,9 @@ pub fn write_genesis_config(output_dir: &Path) -> Result<()> {
         generate_wallet().context("failed to create the native faucet operator")?;
     let native_faucet =
         generate_native_faucet(operator.id()).context("failed to create the native fee faucet")?;
+    let native_faucet_id = native_faucet.id();
     let fee_balance: Asset =
-        FungibleAsset::new(native_faucet.id(), GENESIS_ACCOUNT_FEE_BALANCE)?.into();
-    let funding_balance: Asset =
-        FungibleAsset::new(native_faucet.id(), FUNDING_ACCOUNT_BALANCE)?.into();
+        FungibleAsset::new(native_faucet_id, GENESIS_ACCOUNT_FEE_BALANCE)?.into();
     AccountFile::new(into_genesis_account(native_faucet, fee_balance)?, vec![])
         .write(output_dir.join(NATIVE_FAUCET_FILE))
         .with_context(|| format!("failed to write {NATIVE_FAUCET_FILE}"))?;
@@ -132,6 +131,8 @@ pub fn write_genesis_config(output_dir: &Path) -> Result<()> {
     // Genesis loads the funding account from its own flag, so it is not listed in `accounts.toml`.
     let (funding_account, funding_secret) =
         generate_wallet().context("failed to create the funding account")?;
+    let funding_balance: Asset =
+        FungibleAsset::new(native_faucet_id, FUNDING_ACCOUNT_BALANCE)?.into();
     AccountFile::new(into_genesis_account(funding_account, funding_balance)?, vec![funding_secret])
         .write(output_dir.join(FUNDING_ACCOUNT_FILE))
         .with_context(|| format!("failed to write {FUNDING_ACCOUNT_FILE}"))?;
