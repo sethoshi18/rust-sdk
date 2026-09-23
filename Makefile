@@ -22,16 +22,12 @@ TEST_MIDEN_NOTE_TRANSPORT_URL?=http://127.0.0.1:57292
 # `start-test-node.sh`. Against a deployed network, point this at the accounts deployed there.
 AGGLAYER_ACCOUNTS_DIR?=$(CURDIR)/data
 
-# The test node writes the serialized protocol configuration to this path.
-MIDEN_PROTOCOL_CONFIG?=$(CURDIR)/data/protocol-config.bin
-
 # The node's funding service, where the integration tests draw the native fee asset from.
 # `start-test-node.sh` runs one here on a fee-charging chain. Against a deployed network, point this
 # at that network's service. Empty leaves the run without a funder, which is all a fee-free chain
 # needs.
 MIDEN_FUNDING_SERVICE_URL?=http://127.0.0.1:50401
 
-integration-test integration-test-non-agglayer integration-test-agglayer integration-test-miden-bench integration-test-dev: export MIDEN_PROTOCOL_CONFIG := $(MIDEN_PROTOCOL_CONFIG)
 integration-test integration-test-non-agglayer integration-test-agglayer integration-test-miden-bench integration-test-dev: export MIDEN_FUNDING_SERVICE_URL := $(MIDEN_FUNDING_SERVICE_URL)
 
 # Sizes the SQL store scaling benchmark sweeps over. Kept small enough to run on every PR, and
