@@ -15,7 +15,13 @@ use miden_objects::{
     Verify,
 };
 use miden_protocol::block::BlockNumber;
-use miden_protocol::note::{NoteDetails, NoteDetailsCommitment, NoteHeader, NoteTag};
+use miden_protocol::note::{
+    NoteDetails,
+    NoteDetailsCommitment,
+    NoteHeader,
+    NoteInclusionProof,
+    NoteTag,
+};
 use miden_protocol::utils::serde::{Deserializable, Serializable};
 use miden_tx::utils::sync::RwLock;
 use thiserror::Error;
@@ -36,6 +42,7 @@ use super::generated::note_transport::{
     FetchNotesRequest,
     FetchedNote,
     SendNoteRequest,
+    SendNoteWithProofRequest,
     TransportNote,
 };
 use super::{NoteInfo, NoteTransportCursor, NoteTransportError};
@@ -108,6 +115,15 @@ impl Verify for DecodedFetchedNote {
             block_hint: self.block_hint,
         })
     }
+}
+
+/// Builds the wire note from a header and serialized details.
+fn transport_note(header: NoteHeader, details: &[u8]) -> Result<TransportNote, NoteTransportError> {
+    let details = NoteDetails::read_from_bytes(details)?;
+    Ok(TransportNote {
+        header: Some(header.into()),
+        details: Some(details.into()),
+    })
 }
 
 // GRPC CLIENT
@@ -228,6 +244,32 @@ impl GrpcNoteTransportClient {
         self.send_note_inner(header, details, Some(block_hint.as_u32())).await
     }
 
+    /// Pushes a note to the note transport network together with its inclusion proof.
+    ///
+    /// The service verifies the proof against its node before it stores the note, and relays the
+    /// commitment block to recipients as the exact inclusion block.
+    pub async fn send_note_with_proof(
+        &self,
+        header: NoteHeader,
+        details: Vec<u8>,
+        inclusion_proof: NoteInclusionProof,
+    ) -> Result<(), NoteTransportError> {
+        let request = SendNoteWithProofRequest {
+            inclusion_proof: Some((&header.id(), &inclusion_proof).into()),
+            note: Some(transport_note(header, &details)?),
+        };
+
+        self.api()
+            .await?
+            .send_note_with_proof(Request::new(request))
+            .await
+            .map_err(|e| {
+                NoteTransportError::Network(format!("Send note with proof failed: {e:?}"))
+            })?;
+
+        Ok(())
+    }
+
     /// Sends a note with an optional block hint.
     async fn send_note_inner(
         &self,
@@ -235,12 +277,8 @@ impl GrpcNoteTransportClient {
         details: Vec<u8>,
         after_block_num: Option<u32>,
     ) -> Result<(), NoteTransportError> {
-        let details = NoteDetails::read_from_bytes(&details)?;
         let request = SendNoteRequest {
-            note: Some(TransportNote {
-                header: Some(header.into()),
-                details: Some(details.into()),
-            }),
+            note: Some(transport_note(header, &details)?),
             after_block_num: after_block_num.map(BlockNumber::from).map(Into::into),
         };
 
@@ -349,6 +387,15 @@ impl super::NoteTransportClient for GrpcNoteTransportClient {
         block_hint: BlockNumber,
     ) -> Result<(), NoteTransportError> {
         self.send_note_with_block_hint(header, details, block_hint).await
+    }
+
+    async fn send_note_with_proof(
+        &self,
+        header: NoteHeader,
+        details: Vec<u8>,
+        inclusion_proof: NoteInclusionProof,
+    ) -> Result<(), NoteTransportError> {
+        self.send_note_with_proof(header, details, inclusion_proof).await
     }
 
     async fn fetch_notes(

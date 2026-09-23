@@ -349,7 +349,7 @@ async fn send<AUTH: Keystore + Sync>(
         .await
         .map_err(|e| CliError::Input(format!("note not found: {e}")))?;
 
-    let block_hint = note_record.inclusion_proof().map(|proof| proof.location().block_num());
+    let inclusion_proof = note_record.inclusion_proof().cloned();
     let note: Note = note_record
         .try_into()
         .map_err(|e| CliError::from(ClientError::NoteRecordConversionError(e)))?;
@@ -357,9 +357,11 @@ async fn send<AUTH: Keystore + Sync>(
         Address::decode(address).map_err(|e| CliError::Input(e.to_string()))?;
     validate_network_eq(&address_network_id, &configured_network_id()?)?;
 
-    match block_hint {
-        Some(block_hint) => {
-            client.send_private_note_with_block_hint(note, &address, block_hint).await?;
+    match inclusion_proof {
+        // A committed note travels with its proof, so the transport verifies it and the recipient
+        // learns the exact commitment block.
+        Some(inclusion_proof) => {
+            client.send_private_note_with_proof(note, &address, inclusion_proof).await?;
         },
         None => {
             #[allow(deprecated)]
