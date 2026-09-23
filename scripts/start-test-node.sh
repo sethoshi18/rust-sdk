@@ -67,7 +67,8 @@ VERIFICATION_BASE_FEE="${MIDEN_VERIFICATION_BASE_FEE:-500}"
 # runs. No test consumes the fee notes.
 BATCH_BUILDER_WALLET="${MIDEN_BATCH_BUILDER_WALLET:-0xcc0000000000dd010000ee000000ff}"
 
-NODE_BINS=(miden-validator miden-node miden-ntx-builder miden-remote-prover miden-funding-service)
+NODE_BINS=(miden-validator miden-node miden-ntx-builder miden-remote-prover miden-note-transport
+           miden-funding-service)
 
 # Resolve the node source. MIDEN_NODE_GIT_REV wins, so a node that is not released yet can be
 # tested without a git pin in Cargo.lock, which would drag the whole lockfile with it. Otherwise
@@ -165,7 +166,7 @@ echo "==> generating genesis + bootstrapping (verification_base_fee = $VERIFICAT
 rm -rf "$DATA"
 # Each component opens its SQLite DB directly under its data dir and does not create it.
 mkdir -p "$LOG_DIR" "$DATA/validator" "$DATA/node" "$DATA/ntx-builder"
-MIDEN_VERIFICATION_BASE_FEE="$VERIFICATION_BASE_FEE" "$GEN_GENESIS" "$DATA/genesis-config"
+"$GEN_GENESIS" "$DATA/genesis-config"
 mkdir -p "$ROOT/data"
 cp "$DATA/genesis-config/tst_faucet.mac" "$ROOT/data/account.mac"
 # Expose the agglayer accounts under ./data, where the tests read them via AGGLAYER_ACCOUNTS_DIR.
@@ -187,9 +188,16 @@ ENCRYPTION_KEY="9964dbb2590adeb415d3291b64a0a9991fbcac5adacb05ee17efee5296d081d7
 
 {
     # Genesis generation is separate from bootstrap: `genesis` builds the block once, then every
-    # component seeds its database from the resulting file.
+    # component seeds its database from the resulting file. The native faucet and the funding
+    # account are required inputs with their own flags; the fee and the timestamp are genesis
+    # parameters rather than accounts, so they are passed here instead of through the fixtures.
     "$BIN/miden-validator" genesis --genesis-block-directory "$DATA/genesis" \
-        --accounts-directory "$DATA/accounts" --config "$DATA/genesis-config/genesis.toml" \
+        --accounts-directory "$DATA/accounts" \
+        --accounts-config "$DATA/genesis-config/accounts.toml" \
+        --native-faucet "$DATA/genesis-config/native_faucet.mac" \
+        --funding-account "$DATA/genesis-config/funding_account.mac" \
+        --verification-base-fee "$VERIFICATION_BASE_FEE" \
+        --timestamp "$(date +%s)" \
         --validator.key "$VALIDATOR_PUBLIC_KEY"
     "$BIN/miden-validator" bootstrap --data-directory "$DATA/validator" \
         --genesis "$DATA/genesis/genesis.dat"
@@ -281,14 +289,13 @@ start ntx-builder "$BIN/miden-ntx-builder" start --listen "$NTX" --rpc.url "http
     --max-cycles "$((1 << 18))" \
     --data-directory "$DATA/ntx-builder"
 
-# The funding service hands the native asset to the accounts the tests create. It exists only on a
-# fee-charging chain, since a fee-free one hands out nothing and its genesis declares no wallet for
-# the service to pay from.
+# The funding service hands the native asset to the accounts the tests create. It runs only on a
+# fee-charging chain, since a fee-free one hands out nothing.
 #
-# It signs with the key in the wallet `miden-validator genesis` wrote for the `funding_service`
-# entry, and trusts the same validator signing key the validator itself was started with. Requests
-# block until the note commits, so the HTTP timeout has to cover a proof plus the expiration
-# window.
+# It pays out of the funding account `gen-genesis` wrote and genesis loaded through
+# `--funding-account`, signing with the key in that file, and trusts the same validator signing key
+# the validator itself was started with. It answers a request with the note before it builds the
+# transaction which creates the note.
 FUNDING_ENABLED=""
 if [ "$VERIFICATION_BASE_FEE" != "0" ]; then
     FUNDING_ENABLED=1
@@ -296,7 +303,7 @@ if [ "$VERIFICATION_BASE_FEE" != "0" ]; then
         --rpc.url "http://$RPC" \
         --tx-prover.url "http://$PROVER" \
         --tx-prover.timeout "$PROVER_TIMEOUT" \
-        --account-file "$DATA/accounts/funding_service.mac" \
+        --account-file "$DATA/genesis-config/funding_account.mac" \
         --validator-signing-public-key "$VALIDATOR_PUBLIC_KEY" \
         --http.timeout 300s \
         --poll-interval 250ms
